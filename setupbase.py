@@ -316,6 +316,7 @@ def find_scripts(entry_points=False, suffix=''):
             'ipengine%s = IPython.parallel.apps.ipengineapp:launch_new_instance',
             'iplogger%s = IPython.parallel.apps.iploggerapp:launch_new_instance',
             'ipcluster%s = IPython.parallel.apps.ipclusterapp:launch_new_instance',
+            'winclusterservice%s = IPython.parallel.apps.winclusterservice:launch_new_instance',            
             'iptest%s = IPython.testing.iptest:main',
             'irunner%s = IPython.lib.irunner:main'
         ]]
@@ -328,6 +329,7 @@ def find_scripts(entry_points=False, suffix=''):
                    pjoin(parallel_scripts, 'ipengine'),
                    pjoin(parallel_scripts, 'ipcontroller'),
                    pjoin(parallel_scripts, 'ipcluster'),
+                   pjoin(parallel_scripts, 'winclusterservice'),
                    pjoin(parallel_scripts, 'iplogger'),
                    pjoin(main_scripts, 'ipython'),
                    pjoin(main_scripts, 'pycolor'),
