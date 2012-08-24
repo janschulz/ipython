@@ -7,10 +7,12 @@ Authors:
 
 * Jan Schulz
 
-Based on code from http://code.activestate.com/recipes/576451-how-to-create-a-windows-service-in-python/ 
-(MIT licenced)
+Loosly based on the example from 
+from http://code.activestate.com/recipes/576451-how-to-create-a-windows-service-in-python/ 
+(MIT licensed)
 
-Needs pywin32 from http://sourceforge.net/projects/pywin32/ or http://www.lfd.uci.edu/~gohlke/pythonlibs/#pywin32
+Needs pywin32 from http://sourceforge.net/projects/pywin32/ or 
+http://www.lfd.uci.edu/~gohlke/pythonlibs/#pywin32
 
 """
 
@@ -47,16 +49,14 @@ except:
 #-----------------------------------------------------------------------------
 
 
-default_config_file_name = u'ipclusterservice_config.py'
-
-
-
 class IPClusterServiceApp(IPClusterStart):
     """Configures the cluster app into a windows service"""
 
-    # get the kill routine combined with IPClusterStart
+    # HACK: get the kill routine from IPClusterStop combined with IPClusterStart
+    # TODO: refactor IPCluster{Start,Stop}?
     kill_cluster = IPClusterStop.start.im_func
     
+    # Overwrite as the original one exits
     def exit(self,  exit_status=0):
         self.log.debug("Exiting application: %s" % self.name)
         raise Exception(exit_status)
@@ -83,36 +83,34 @@ class IPClusterService(win32serviceutil.ServiceFramework):
         servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE, servicemanager.PYS_SERVICE_STARTED, (self._svc_name_, ''))
         # Start the cluster
         import sys
-        # Clean up the commandline args so that the ipython app don't hrow an error
-        pythonservice_path = sys.executable
-        print(sys.executable)
-        sys.executable = u"C:\\portabel\\Python27\\python.exe" # TODO: change to figure it out!
-        sys.argv = [sys.argv[0], "--log-level=DEBUG", "--log-to-file=True", "--reuse"]
-        # TODO: Add only reuse and log-to-file
-        servicemanager.LogInfoMsg(str(sys.argv))
+        # Clean up the commandline args so that the ipython app doesn't throw an error
+        # add log-to-file because the service is not visible to the user and reuse so that
+        # one does not need to copy the files around.
+        # everything else must be configured in the config files
+        sys.argv = [sys.argv[0], "--log-to-file=True", "--reuse"]
+        servicemanager.LogInfoMsg("New commandline: "+ str(sys.argv))
         self.clusterapp = IPClusterServiceApp.instance()
         #self.clusterapp.log_level = 0 # debug
         self.clusterapp.initialize()
+        # TODO: Output the used config file?
+        servicemanager.LogInfoMsg("Using profile-dir: "+str(self.clusterapp.profile_dir))
+        servicemanager.LogInfoMsg("Using work-dir: "+str(self.clusterapp.work_dir))
         self.clusterapp.start()
         
+        # ToDo: implement a while loop and look for the engines and restart them if they went down...
         
-        self.timeout = 30000
-        
-        # TODO: without a loop? Just use it for restarting?
-        while 1:
-            # Wait for service stop signal, if I timeout, loop again
-            rc = win32event.WaitForSingleObject(self.hWaitStop, self.timeout)
-            # Check to see if self.hWaitStop happened
-            if rc == win32event.WAIT_OBJECT_0:
-                # Stop signal encountered
-                # kill the cluster
-                # Todo: is there another way? Stop both launcher?
-                self.clusterapp.kill_cluster()
-                #self._kill_cluster(self.clusterapp)
-                servicemanager.LogInfoMsg(self._svc_name_ + "- STOPPED")
-                break
-            else:
-                servicemanager.LogInfoMsg(self._svc_name_ + "- is alive and well")
+        # The start command needs to wait otherwise windows thinks that we stopped.
+        # Wait for service stop signal
+        rc = win32event.WaitForSingleObject(self.hWaitStop, win32event.INFINITE)
+        # Check to see if self.hWaitStop happened
+        if rc == win32event.WAIT_OBJECT_0:
+            # Stop signal encountered: kill the cluster
+            self.clusterapp.kill_cluster()
+            servicemanager.LogInfoMsg(self._svc_name_ + "- Stopped")
+            break
+        else:
+            # We can't do anything about it :-(
+            servicemanager.LogInfoMsg(self._svc_name_ + "- SOMETHING BAD HAPPENED...")
 
 
 def ctrlHandler(ctrlType):
