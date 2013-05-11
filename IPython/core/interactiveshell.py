@@ -418,6 +418,8 @@ class InteractiveShell(SingletonConfigurable):
 
     # Tracks any GUI loop loaded for pylab
     pylab_gui_select = None
+    
+    _defined_hooks = []
 
     def __init__(self, config=None, ipython_dir=None, profile_dir=None,
                  user_module=None, user_ns=None,
@@ -767,6 +769,10 @@ class InteractiveShell(SingletonConfigurable):
             # default hooks have priority 100, i.e. low; user hooks should have
             # 0-100 priority
             self.set_hook(hook_name,getattr(hooks,hook_name), 100)
+    
+    def define_hook(self, name, hook_dispatcher):
+        self._defined_hooks.append(name)
+        setattr(self.hooks,name, hook_dispatcher)
 
     def set_hook(self,name,hook, priority = 50, str_key = None, re_key = None):
         """set_hook(name,hook) -> sets an internal IPython hook.
@@ -794,7 +800,7 @@ class InteractiveShell(SingletonConfigurable):
             return
 
         dp = getattr(self.hooks, name, None)
-        if name not in IPython.core.hooks.__all__:
+        if name not in IPython.core.hooks.__all__ and name not in self._defined_hooks:
             print("Warning! Hook '%s' is not one of %s" % \
                   (name, IPython.core.hooks.__all__ ))
         if not dp:
