@@ -105,8 +105,8 @@ def synchronize_with_editor(self, filename, linenum, column):
         pass
 
 
-class CommandChainDispatcher:
-    """ Dispatch calls to a chain of commands until some func can handle it
+class AbstractDispatcher:
+    """ Abstarct dispatcher. The real dispaching process must be handled in a subclass.
 
     Usage: instantiate, execute "add" to add commands (with optional
     priority), execute normally via f() calling mechanism.
@@ -118,6 +118,32 @@ class CommandChainDispatcher:
         else:
             self.chain = commands
 
+
+    def __call__(self,*args, **kw):
+        pass
+
+    def __str__(self):
+        return str(self.chain)
+
+    def add(self, func, priority=0):
+        """ Add a func to the cmd chain with given priority """
+        self.chain.append((priority, func))
+        self.chain.sort(key=lambda x: x[0])
+
+    def __iter__(self):
+        """ Return all objects in chain.
+
+        Handy if the objects are not callable.
+        """
+        return iter(self.chain)
+
+class CommandChainDispatcher(AbstractDispatcher):
+    """ Dispatch calls to a chain of commands until some func can handle it
+
+    Usage: instantiate, execute "add" to add commands (with optional
+    priority), execute normally via f() calling mechanism.
+
+    """
 
     def __call__(self,*args, **kw):
         """ Command chain is called just like normal func.
@@ -135,20 +161,30 @@ class CommandChainDispatcher:
         # if no function will accept it, raise TryNext up to the caller
         raise last_exc
 
-    def __str__(self):
-        return str(self.chain)
 
-    def add(self, func, priority=0):
-        """ Add a func to the cmd chain with given priority """
-        self.chain.append((priority, func))
-        self.chain.sort(key=lambda x: x[0])
+class CommandListDispatcher(AbstractDispatcher):
+    """ Dispatch calls to a list of commands
 
-    def __iter__(self):
-        """ Return all objects in chain.
+    Usage: instantiate, execute "add" to add commands (with optional
+    priority), execute normally via f() calling mechanism.
 
-        Handy if the objects are not callable.
-        """
-        return iter(self.chain)
+    """
+
+    def __call__(self,*args, **kw):
+        """ Command chain is called just like normal func.
+
+        This will call all funcs in list with the same args as were given to
+        this function, one after another. Results and exceptions are returned 
+        in a list"""
+        _result = []
+        for prio,cmd in self.chain:
+            #print "prio",prio,"cmd",cmd #dbg
+            try:
+                _result.append(cmd(*args, **kw))
+            except Exception as exc:
+                _result.append(exc)
+        # if no function will accept it, raise TryNext up to the caller
+        return _result
 
 
 def input_prefilter(self,line):
