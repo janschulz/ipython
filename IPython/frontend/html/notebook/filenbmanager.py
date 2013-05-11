@@ -17,7 +17,6 @@ Authors:
 #-----------------------------------------------------------------------------
 
 import datetime
-import io
 import os
 import glob
 import shutil
@@ -27,6 +26,8 @@ from tornado import web
 from .nbmanager import NotebookManager
 from IPython.nbformat import current
 from IPython.utils.traitlets import Unicode, Dict, Bool, TraitError
+from IPython.core.hooks import CommandListDispatcher
+from IPython.core.interactiveshell import InteractiveShell
 
 #-----------------------------------------------------------------------------
 # Classes
@@ -73,7 +74,16 @@ class FileNotebookManager(NotebookManager):
 
     # Map notebook names to notebook_ids
     rev_mapping = Dict()
-    
+
+    def __init__(self, **kwargs):
+        super(FileNotebookManager, self).__init__(**kwargs)
+        # Setup a new hook to be used as a post-save hook for noteboks
+        self.log.error(u'defining hook entry point.')
+        InteractiveShell.instance().define_hook("notebook_manager_post_save_hook", CommandListDispatcher())
+        if self.save_script:
+            from IPython.frontend.html.notebook.examples.saveasscript import save_as_script_post_save_hook
+            InteractiveShell.instance().set_hook("notebook_manager_post_save_hook", save_as_script_post_save_hook)
+
     def get_notebook_names(self):
         """List all notebook names in the notebook dir."""
         names = glob.glob(os.path.join(self.notebook_dir,
@@ -182,15 +192,16 @@ class FileNotebookManager(NotebookManager):
         except Exception as e:
             raise web.HTTPError(400, u'Unexpected error while autosaving notebook: %s' % e)
 
-        # save .py script as well
-        if self.save_script:
-            pypath = os.path.splitext(path)[0] + '.py'
-            self.log.debug("Writing script %s", pypath)
-            try:
-                with io.open(pypath,'w', encoding='utf-8') as f:
-                    current.write(nb, f, u'py')
-            except Exception as e:
-                raise web.HTTPError(400, u'Unexpected error while saving notebook as script: %s' % e)
+        # call the post save hook
+        results = InteractiveShell.instance().hooks.notebook_manager_post_save_hook(nb, new_name, old_name, path, notebook_id, self)
+        has_errors = any(isinstance( _result, Exception) for _result in results)
+        if has_errors:
+            message = ""
+            for _result in results:
+                if isinstance( _result, Exception):
+                    message += str(_result) + ";"
+            self.log.error(u'Unexpected error(s) in post_save_hook while saving notebook: %s' % message)
+            raise web.HTTPError(400, u'Unexpected error(s) in post_save_hook while saving notebook: %s' % message)
         
         # remove old files if the name changed
         if old_name != new_name:
@@ -204,14 +215,7 @@ class FileNotebookManager(NotebookManager):
             if os.path.isfile(old_path):
                 self.log.debug("unlinking notebook %s", old_path)
                 os.unlink(old_path)
-            
-            # cleanup old script, if it exists
-            if self.save_script:
-                old_pypath = os.path.splitext(old_path)[0] + '.py'
-                if os.path.isfile(old_pypath):
-                    self.log.debug("unlinking script %s", old_pypath)
-                    os.unlink(old_pypath)
-            
+                        
             # rename checkpoints to follow file
             for cp in old_checkpoints:
                 checkpoint_id = cp['checkpoint_id']
